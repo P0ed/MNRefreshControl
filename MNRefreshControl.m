@@ -11,9 +11,10 @@ static CGFloat const MNRefreshControlSize = 28;
 @interface MNRefreshControl ()
 @property (nonatomic, copy) void (^refreshControlActionHandler)(void);
 @property (nonatomic, strong) MNActivityIndicatorView *activityIndicatorView;
-@property (nonatomic, readwrite) MNRefreshControlState state;
+@property (nonatomic) MNRefreshControlState state;
 @property (nonatomic, weak) UIScrollView *scrollView;
-@property (nonatomic, readwrite) CGFloat originalTopInset;
+@property (nonatomic) CGFloat originalTopInset;
+@property (nonatomic) CGFloat velocity;
 @end
 
 
@@ -75,7 +76,6 @@ static char UIScrollViewRefreshControl;
 		_activityIndicatorView = [[MNActivityIndicatorView alloc] initWithFrame:frame];
 		[self addSubview:_activityIndicatorView];
 		_refreshing = NO;
-		_velocity = 0.3;
 	}
 	
 	return self;
@@ -132,6 +132,7 @@ static char UIScrollViewRefreshControl;
 					if (pullWidth < MNRefreshControlThreshold) {
 						self.state = MNRefreshControlStateUnderThreshold;
 					}
+					self.velocity = [_scrollView.panGestureRecognizer velocityInView:_scrollView].y;
 				} else {
 					self.state = MNRefreshControlStateTriggered;
 				}
@@ -145,14 +146,12 @@ static char UIScrollViewRefreshControl;
 }
 
 - (void)layoutSubviews {
-//	CGFloat side = fmin(MNRefreshControlSize, fmax(0, self.bounds.size.height - 4));
-//	self.activityIndicatorView.bounds = CGRectMake(0, 0, side, side);
 	self.activityIndicatorView.center = CGPointMake(self.frame.size.width / 2, self.frame.size.height / 2);
 }
 
 - (void)updateFrame {
-	CGFloat origin = _scrollView.contentOffset.y + self.originalTopInset;
-	self.frame = CGRectMake(0, origin, _scrollView.frame.size.width, fmaxf(0, -origin));
+	CGFloat height = fmaxf(MNRefreshControlThreshold, -(_scrollView.contentOffset.y + self.originalTopInset));
+	self.frame = CGRectMake(0, -height, _scrollView.frame.size.width, height);
 	[self layoutSubviews];
 }
 
@@ -168,16 +167,23 @@ static char UIScrollViewRefreshControl;
 
 #pragma mark -
 
+- (void)rotateActivityIndicatorView {
+	CAKeyframeAnimation *rotationAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform.rotation.z"];
+	rotationAnimation.duration = fmin(fmax(900 / self.velocity, 1.2), 3);
+	rotationAnimation.values = @[@0, @(M_PI / 2), @(M_PI * 3 / 2), @(M_PI * 2)];
+	rotationAnimation.timingFunctions = @[[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn],
+										  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear],
+										  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut]];
+	[self.activityIndicatorView.layer addAnimation:rotationAnimation forKey:@"rotationAnimation"];
+}
+
 - (void)beginRefreshing {
 	
 	if (!_refreshing) {
 		_refreshing = YES;
 		
 		[self.activityIndicatorView startAnimating];
-		
-		[UIView animateWithDuration:0.3 animations:^{
-			self.activityIndicatorView.transform = CGAffineTransformRotate(self.activityIndicatorView.transform, M_PI);
-		}];
+		[self rotateActivityIndicatorView];
 		
 		UIEdgeInsets insets = _scrollView.contentInset;
 		self.originalTopInset = insets.top;
@@ -197,8 +203,6 @@ static char UIScrollViewRefreshControl;
 - (void)endRefreshing {
 
 	if (_refreshing) {
-//		_refreshing = NO;
-		
 		[UIView animateWithDuration:0.3
 						 animations:^{
 							 
@@ -213,6 +217,7 @@ static char UIScrollViewRefreshControl;
 							 _refreshing = NO;
 							 self.state = MNRefreshControlStateStopped;
 							 self.activityIndicatorView.transform = CGAffineTransformIdentity;
+							 [self.activityIndicatorView.layer removeAllAnimations];
 						 }];
 	}
 }

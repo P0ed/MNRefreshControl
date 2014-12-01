@@ -124,7 +124,7 @@ static const NSInteger numberOfSectors = 12;
 
 - (void)animate {
 	_angle = fmodf(_angle + 0.3, M_PI * 2);
-//	[self setNeedsDisplay];
+	[self setNeedsDisplay];
 }
 
 @end

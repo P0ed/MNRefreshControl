@@ -21,7 +21,6 @@ typedef NS_ENUM(NSUInteger, MNRefreshControlState) {
 
 @interface MNRefreshControl : UIView
 @property (nonatomic, readonly) MNRefreshControlState state;
-@property (nonatomic) CGFloat velocity;
 @property (nonatomic, readonly, getter=isRefreshing) BOOL refreshing;
 - (void)beginRefreshing;
 - (void)endRefreshing;
