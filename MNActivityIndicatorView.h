@@ -9,19 +9,10 @@
 @import UIKit;
 
 
-typedef enum {
-	SpinnerModeActivityIndicator = 0,
-	SpinnerModeProgressBar,
-} SpinnerMode;
-
-
 @interface MNActivityIndicatorView : UIView
-
-@property (nonatomic, retain) UIColor *tintColor;
 @property (nonatomic, assign) CGFloat progress;
 @property (nonatomic, readonly, getter=isAnimating) BOOL animating;
-
+- (void)startAnimatingWithVelocity:(CGFloat)velocity;
 - (void)startAnimating;
 - (void)stopAnimating;
-
 @end

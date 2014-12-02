@@ -18,22 +18,18 @@ static const NSInteger numberOfSectors = 12;
 }
 
 - (id)initWithFrame:(CGRect)frame {
-	
-	self = [super initWithFrame:frame];
-	if (self) {
+	if (self = [super initWithFrame:frame]) {
 		self.backgroundColor = [UIColor clearColor];
 		self.userInteractionEnabled = NO;
-		_tintColor = [UIColor colorWithWhite:0.55 alpha:1];
+		self.tintColor = [UIColor whiteColor];
 	}
 	return self;
 }
 
 - (void)drawRect:(CGRect)rect {
-	
 	if (!CGRectIsEmpty(rect)) {
-	
 		CGContextRef ctx = UIGraphicsGetCurrentContext();
-		[_tintColor setFill];
+		[self.tintColor setFill];
 		
 		CGPoint center = CGPointMake(rect.size.width / 2.0, rect.size.height / 2.0);
 		CGFloat radius = fminf(rect.size.width, rect.size.height) / 2.0;
@@ -48,29 +44,24 @@ static const NSInteger numberOfSectors = 12;
 		}
 		
 		for (NSInteger i = 0; i < numberOfSectorsToDraw; ++i) {
-			
+			// Animation offset
 			CGFloat spinnerOffset = (self.isAnimating ? -1 : 0);
 			CGFloat sectorAngle = 2 * M_PI / (CGFloat)numberOfSectors * (i + spinnerOffset);
-			
+			// Rotation
 			CGContextSaveGState(ctx);
 			CGContextTranslateCTM(ctx, center.x, center.y);
 			CGContextRotateCTM(ctx, sectorAngle);
 			CGContextTranslateCTM(ctx, -center.x, -center.y);
-			
-			/* AlphaChannel */ {
-				
-				CGFloat distance = _angle - sectorAngle + M_PI * 2;
-				distance = fmodf(distance, M_PI * 2);
-				distance = 1.0 - distance / (M_PI * 2);
-				
-				CGFloat kCorr = 0.25;
-				distance = kCorr + (1.0 - kCorr) * distance;
-				CGContextSetAlpha(ctx, distance);
-			}
-			
+			// AlphaChannel
+			CGFloat distance = _angle - sectorAngle + M_PI * 2;
+			distance = fmodf(distance, M_PI * 2);
+			distance = 1.0 - distance / (M_PI * 2);
+			CGFloat kCorr = 0.25;
+			distance = kCorr + (1.0 - kCorr) * distance;
+			CGContextSetAlpha(ctx, distance);
+			// Segment drawing
 			CGContextAddRect(ctx, CGRectMake(center.x - sectorWidth / 2, 0, sectorWidth, sectorLength));
 			CGContextFillPath(ctx);
-			
 			CGContextRestoreGState(ctx);
 		}
 	}
@@ -86,7 +77,7 @@ static const NSInteger numberOfSectors = 12;
 }
 
 - (void)setTintColor:(UIColor *)tintColor {
-	_tintColor = tintColor;
+	[super setTintColor:tintColor];
 	if (!self.isAnimating) {
 		[self setNeedsDisplay];
 	}
@@ -105,19 +96,31 @@ static const NSInteger numberOfSectors = 12;
 
 #pragma mark - Actions
 
-- (void)startAnimating {
+- (void)startAnimatingWithVelocity:(CGFloat)velocity {
 	if (!self.isAnimating) {
 		_angle = 0;
 		_timer = [NSTimer timerWithTimeInterval:0.05 target:self selector:@selector(animate) userInfo:nil repeats:YES];
 		[[NSRunLoop mainRunLoop] addTimer:_timer forMode:NSRunLoopCommonModes];
+		
+		CAKeyframeAnimation *rotationAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform.rotation.z"];
+		rotationAnimation.duration = fmin(fmax(900 / velocity, 1.1), 2.3);
+		rotationAnimation.values = @[@0, @(M_PI / 2), @(M_PI * 3 / 2), @(M_PI * 2)];
+		rotationAnimation.timingFunctions = @[[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn],
+											  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear],
+											  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut]];
+		[self.layer addAnimation:rotationAnimation forKey:@"rotationAnimation"];
 	}
+}
+
+- (void)startAnimating {
+	[self startAnimatingWithVelocity:500];
 }
 
 - (void)stopAnimating {
 	if (self.isAnimating) {
+		[self.layer removeAllAnimations];
 		_progress = 0;
-		[_timer invalidate];
-		_timer = nil;
+		[_timer invalidate], _timer = nil;
 		[self setNeedsDisplay];
 	}
 }

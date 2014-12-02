@@ -1,3 +1,11 @@
+//
+//  MNActivityIndicatorView.h
+//  MemNow
+//
+//  Created by Konstantin Sukharev on 25/11/14.
+//  Copyright (c) 2014 MemNow. All rights reserved.
+//
+
 #import "MNRefreshControl.h"
 #import "MNActivityIndicatorView.h"
 @import QuartzCore;
@@ -6,13 +14,13 @@
 
 static CGFloat const MNRefreshControlThreshold = 52;
 static CGFloat const MNRefreshControlSize = 28;
+static char UIScrollViewRefreshControl;
 
 
 @interface MNRefreshControl ()
-@property (nonatomic, copy) void (^refreshControlActionHandler)(void);
+@property (nonatomic, copy) MNRefreshControlBlock refreshControlActionHandler;
 @property (nonatomic, strong) MNActivityIndicatorView *activityIndicatorView;
 @property (nonatomic) MNRefreshControlState state;
-@property (nonatomic, weak) UIScrollView *scrollView;
 @property (nonatomic) CGFloat originalTopInset;
 @property (nonatomic) CGFloat velocity;
 @end
@@ -20,27 +28,19 @@ static CGFloat const MNRefreshControlSize = 28;
 
 #pragma mark - UIScrollView (MNRefreshControl)
 
-static char UIScrollViewRefreshControl;
-
-
 @implementation UIScrollView (MNRefreshControl)
 
-@dynamic refreshControl;
-
-- (void)addRefreshControlWithActionHandler:(void (^)(void))actionHandler {
+- (void (^)(MNRefreshControlBlock actionHandler))addRefreshControlWithActionHandler { return ^(MNRefreshControlBlock actionHandler) {
 	
-	MNRefreshControl *view = self.refreshControl;
-	if (!view) {
-		view = [[MNRefreshControl alloc] initWithFrame:CGRectMake(0, -MNRefreshControlThreshold, self.bounds.size.width, MNRefreshControlThreshold)];
-		view.scrollView = self;
-		[self addSubview:view];
-		
-		view.originalTopInset = self.contentInset.top;
-		self.refreshControl = view;
-		self.showsRefreshControl = YES;
+	MNRefreshControl *refreshControl = self.refreshControl;
+	if (!refreshControl) {
+		refreshControl = MNRefreshControl.new;
+		refreshControl.originalTopInset = self.contentInset.top;
+		[self addSubview:refreshControl];
+		self.refreshControl = refreshControl;
 	}
-	view.refreshControlActionHandler = actionHandler;
-}
+	refreshControl.refreshControlActionHandler = actionHandler;
+};}
 
 - (void)setRefreshControl:(MNRefreshControl *)refreshControl {
 	[self willChangeValueForKey:@"MNRefreshControl"];
@@ -52,14 +52,6 @@ static char UIScrollViewRefreshControl;
 	return objc_getAssociatedObject(self, &UIScrollViewRefreshControl);
 }
 
-- (void)setShowsRefreshControl:(BOOL)showsRefreshControl {
-	self.refreshControl.hidden = !showsRefreshControl;
-}
-
-- (BOOL)showsRefreshControl {
-	return !self.refreshControl.hidden;
-}
-
 @end
 
 
@@ -68,7 +60,6 @@ static char UIScrollViewRefreshControl;
 @implementation MNRefreshControl
 
 - (id)initWithFrame:(CGRect)frame {
-	
 	if (self = [super initWithFrame:frame]) {
 		self.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 		self.state = MNRefreshControlStateStopped;
@@ -77,12 +68,14 @@ static char UIScrollViewRefreshControl;
 		[self addSubview:_activityIndicatorView];
 		_refreshing = NO;
 	}
-	
 	return self;
 }
 
 - (void)willMoveToSuperview:(UIView *)newSuperview {
-	if (!newSuperview) self.scrollView = nil;
+	[self.superview removeObserver:self forKeyPath:@"contentOffset"];
+	[self.superview removeObserver:self forKeyPath:@"frame"];
+	[newSuperview addObserver:self forKeyPath:@"contentOffset" options:NSKeyValueObservingOptionNew context:nil];
+	[newSuperview addObserver:self forKeyPath:@"frame" options:NSKeyValueObservingOptionNew context:nil];
 }
 
 #pragma mark - Observing
@@ -101,46 +94,44 @@ static char UIScrollViewRefreshControl;
 	[self updateFrame];
 	
 	if (!_refreshing) {
-		
-		CGFloat pullWidth = -(_scrollView.contentOffset.y + _scrollView.contentInset.top);
-		self.activityIndicatorView.progress = pullWidth / MNRefreshControlThreshold;
+		CGFloat offset = -(self.scrollView.contentOffset.y + self.scrollView.contentInset.top);
+		if (self.scrollView.tracking) self.activityIndicatorView.progress = offset / MNRefreshControlThreshold;
 		
 		switch (self.state) {
-			case MNRefreshControlStateStopped: {
-				if (_scrollView.tracking) {
-					if (pullWidth > 0) {
+			case MNRefreshControlStateStopped:
+				if (self.scrollView.tracking) {
+					if (offset > 0) {
 						self.state = MNRefreshControlStateUnderThreshold;
 					}
 				}
 				break;
-			}
-			case MNRefreshControlStateUnderThreshold: {
-				if (_scrollView.tracking) {
-					if (pullWidth <= 0) {
+				
+			case MNRefreshControlStateUnderThreshold:
+				if (self.scrollView.tracking) {
+					if (offset <= 0) {
 						self.state = MNRefreshControlStateStopped;
 					}
-					else if (pullWidth >= MNRefreshControlThreshold) {
+					else if (offset >= MNRefreshControlThreshold) {
 						self.state = MNRefreshControlStateAboveThreshold;
 					}
 				} else {
 					self.state = MNRefreshControlStateStopped;
 				}
 				break;
-			}
-			case MNRefreshControlStateAboveThreshold: {
-				if (_scrollView.tracking) {
-					if (pullWidth < MNRefreshControlThreshold) {
+
+			case MNRefreshControlStateAboveThreshold:
+				if (self.scrollView.tracking) {
+					if (offset < MNRefreshControlThreshold) {
 						self.state = MNRefreshControlStateUnderThreshold;
 					}
-					self.velocity = [_scrollView.panGestureRecognizer velocityInView:_scrollView].y;
+					self.velocity = [self.scrollView.panGestureRecognizer velocityInView:self.scrollView].y;
 				} else {
 					self.state = MNRefreshControlStateTriggered;
 				}
 				break;
-			}
-			case MNRefreshControlStateTriggered: {
+				
+			case MNRefreshControlStateTriggered:
 				break;
-			}
 		}
 	}
 }
@@ -150,50 +141,32 @@ static char UIScrollViewRefreshControl;
 }
 
 - (void)updateFrame {
-	CGFloat height = fmaxf(MNRefreshControlThreshold, -(_scrollView.contentOffset.y + self.originalTopInset));
-	self.frame = CGRectMake(0, -height, _scrollView.frame.size.width, height);
+	CGFloat height = fmaxf(MNRefreshControlThreshold, -(self.scrollView.contentOffset.y + self.originalTopInset));
+	self.frame = CGRectMake(0, -height, self.scrollView.frame.size.width, height);
 	[self layoutSubviews];
 }
 
-- (void)setScrollView:(UIScrollView *)scroll {
-	[_scrollView removeObserver:self forKeyPath:@"contentOffset"];
-	[_scrollView removeObserver:self forKeyPath:@"frame"];
-	_scrollView = scroll;
-	[_scrollView addObserver:self forKeyPath:@"contentOffset" options:NSKeyValueObservingOptionNew context:nil];
-	[_scrollView addObserver:self forKeyPath:@"frame" options:NSKeyValueObservingOptionNew context:nil];
-	[self updateFrame];
-	[_scrollView addSubview:self];
+- (UIScrollView *)scrollView {
+	return (UIScrollView *)self.superview;
 }
 
 #pragma mark -
 
-- (void)rotateActivityIndicatorView {
-	CAKeyframeAnimation *rotationAnimation = [CAKeyframeAnimation animationWithKeyPath:@"transform.rotation.z"];
-	rotationAnimation.duration = fmin(fmax(900 / self.velocity, 1.2), 3);
-	rotationAnimation.values = @[@0, @(M_PI / 2), @(M_PI * 3 / 2), @(M_PI * 2)];
-	rotationAnimation.timingFunctions = @[[CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn],
-										  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionLinear],
-										  [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut]];
-	[self.activityIndicatorView.layer addAnimation:rotationAnimation forKey:@"rotationAnimation"];
-}
-
 - (void)beginRefreshing {
-	
 	if (!_refreshing) {
 		_refreshing = YES;
 		
-		[self.activityIndicatorView startAnimating];
-		[self rotateActivityIndicatorView];
+		[self.activityIndicatorView startAnimatingWithVelocity:self.velocity];
 		
-		UIEdgeInsets insets = _scrollView.contentInset;
+		UIEdgeInsets insets = self.scrollView.contentInset;
 		self.originalTopInset = insets.top;
 		insets.top += MNRefreshControlThreshold;
 		
 		[UIView animateWithDuration:0.3
 						 animations:^{
-							 _scrollView.contentInset = insets;
-							 if (_scrollView.contentOffset.y > -_scrollView.contentInset.top) {
-								 _scrollView.contentOffset = CGPointMake(_scrollView.contentOffset.x, -_scrollView.contentInset.top);
+							 self.scrollView.contentInset = insets;
+							 if (self.scrollView.contentOffset.y > -self.scrollView.contentInset.top) {
+								 self.scrollView.contentOffset = CGPointMake(self.scrollView.contentOffset.x, -self.scrollView.contentInset.top);
 							 }
 							 [self layoutSubviews];
 						 }];
@@ -201,45 +174,36 @@ static char UIScrollViewRefreshControl;
 }
 
 - (void)endRefreshing {
-
 	if (_refreshing) {
 		[UIView animateWithDuration:0.3
 						 animations:^{
-							 
 							 self.activityIndicatorView.transform = CGAffineTransformMakeScale(0.01, 0.01);
-							 
-							 UIEdgeInsets insets = _scrollView.contentInset;
+							 UIEdgeInsets insets = self.scrollView.contentInset;
 							 insets.top = self.originalTopInset;
-							 _scrollView.contentInset = insets;
+							 self.scrollView.contentInset = insets;
 						 }
 						 completion:^(BOOL finished) {
-							 
 							 _refreshing = NO;
 							 self.state = MNRefreshControlStateStopped;
 							 self.activityIndicatorView.transform = CGAffineTransformIdentity;
-							 [self.activityIndicatorView.layer removeAllAnimations];
 						 }];
 	}
 }
 
 - (void)setState:(MNRefreshControlState)state {
-	
 	if (_state != state) {
 		_state = state;
-		
 		switch (state) {
 			case MNRefreshControlStateStopped:
 			case MNRefreshControlStateUnderThreshold:
-			case MNRefreshControlStateAboveThreshold: {
+			case MNRefreshControlStateAboveThreshold:
 				[self.activityIndicatorView stopAnimating];
 				[self endRefreshing];
 				break;
-			}
-			case MNRefreshControlStateTriggered: {
+			case MNRefreshControlStateTriggered:
 				[self beginRefreshing];
 				if (self.refreshControlActionHandler) self.refreshControlActionHandler();
 				break;
-			}
 		}
 	}
 }
