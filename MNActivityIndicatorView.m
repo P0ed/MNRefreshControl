@@ -21,7 +21,7 @@ static const NSInteger numberOfSectors = 12;
 	if (self = [super initWithFrame:frame]) {
 		self.backgroundColor = [UIColor clearColor];
 		self.userInteractionEnabled = NO;
-		self.tintColor = [UIColor whiteColor];
+		self.tintColor = [UIColor grayColor];
 	}
 	return self;
 }

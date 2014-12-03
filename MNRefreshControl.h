@@ -14,17 +14,17 @@ typedef void (^MNRefreshControlBlock)(void);
 
 
 @interface UIScrollView (MNRefreshControl)
-@property (nonatomic, strong, readonly) MNRefreshControl *refreshControl;
+@property (nonatomic, readonly) MNRefreshControl *refreshControl;
 - (void (^)(MNRefreshControlBlock))addRefreshControlWithActionHandler;
 @end
 
 
 typedef NS_ENUM(NSUInteger, MNRefreshControlState) {
 	
-	MNRefreshControlStateStopped = 0,
-	MNRefreshControlStateUnderThreshold,
-	MNRefreshControlStateAboveThreshold,
+	MNRefreshControlStateIdle,
 	MNRefreshControlStateTriggered,
+	MNRefreshControlStateReleased,
+	MNRefreshControlStateGrabbed,
 };
 
 
